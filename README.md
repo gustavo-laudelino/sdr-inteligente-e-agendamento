@@ -41,7 +41,16 @@ Persistência e notificações internas
 
 ## Tecnologias utilizadas
 
-`n8n` `JavaScript` `OpenAI` `Redis` `Supabase` `Google Calendar API` `Z-API` `ChatGuru`
+<p>
+  <img src="https://img.shields.io/badge/n8n-EA4B71?style=flat-square&logo=n8n&logoColor=white">
+  <img src="https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black">
+  <img src="https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white">
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white">
+  <img src="https://img.shields.io/badge/Supabase-3FCF8E?style=flat-square&logo=supabase&logoColor=white">
+  <img src="https://img.shields.io/badge/Google_Calendar-4285F4?style=flat-square&logo=googlecalendar&logoColor=white">
+  <img src="https://img.shields.io/badge/Z--API-WhatsApp-25D366?style=flat-square">
+  <img src="https://img.shields.io/badge/ChatGuru-CRM-2563EB?style=flat-square">
+</p>
 
 ---
 
