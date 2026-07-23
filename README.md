@@ -1,39 +1,41 @@
 # SDR Inteligente com Agendamento Automatizado
 
-Case técnico de automação de atendimento, qualificação de leads e agendamento integrado ao Google Calendar.
+Case técnico de uma solução real de atendimento, qualificação de leads e agendamento, implantada em três escritórios de advocacia e uma agência de marketing.
 
-> Este repositório apresenta a arquitetura, as decisões técnicas e os principais códigos de uma solução real desenvolvida com n8n. O ambiente original não está mais ativo e dados sensíveis foram removidos.
-
----
-
-## Visão geral
-
-O projeto foi desenvolvido para automatizar o primeiro atendimento de leads recebidos por WhatsApp.
-
-A solução era responsável por:
-
-- receber e normalizar mensagens;
-- identificar novos contatos;
-- manter o contexto da conversa;
-- qualificar o lead por meio de um agente de IA;
-- interpretar solicitações de datas e horários;
-- consultar a disponibilidade dos profissionais;
-- criar compromissos no Google Calendar;
-- registrar os agendamentos no Supabase;
-- enviar respostas sequenciais pelo WhatsApp;
-- registrar informações no CRM.
-
-A IA era utilizada para interpretar a linguagem do usuário e conduzir o atendimento. Regras críticas de datas, disponibilidade e conflitos eram processadas por códigos determinísticos em JavaScript.
-
----
-
-## Tecnologias
+> Este repositório documenta uma solução desenvolvida com n8n e utilizada em operações reais. O ambiente original não está mais ativo; credenciais, identificadores e dados comerciais foram removidos.
 
 `n8n` · `JavaScript` · `OpenAI` · `Redis` · `Supabase` · `Google Calendar API` · `Z-API` · `ChatGuru`
 
----
+## Resumo do case
 
-## Arquitetura simplificada
+| | |
+|---|---|
+| **Problema** | Atendimento manual, mensagens fragmentadas e consulta de agendas durante a conversa com o lead. |
+| **Solução** | Agente integrado ao WhatsApp, CRM, Redis, Supabase e Google Calendar. |
+| **Aplicação** | Três escritórios de advocacia e uma agência de marketing. |
+| **Decisão central** | IA para interpretação e condução da conversa; JavaScript para regras críticas e previsíveis. |
+| **Status** | Case documental de uma solução anteriormente utilizada. |
+
+## Contexto de implantação
+
+A solução foi desenvolvida e adaptada para quatro operações reais:
+
+- três escritórios de advocacia;
+- uma agência de marketing.
+
+Cada operação possuía regras próprias de atendimento, qualificação de leads, profissionais, serviços e agendas.
+
+A mesma arquitetura precisou ser adaptada para diferentes contextos comerciais, mantendo integrações com WhatsApp, CRM, Google Calendar, Redis e Supabase.
+
+Mais do que um protótipo, o projeto foi utilizado como base operacional e precisou lidar com jornadas, agendas e regras distintas.
+
+## Resultado da solução
+
+A jornada principal automatizava a entrada do lead, consolidava mensagens, mantinha o contexto do atendimento, consultava agendas reais, evitava conflitos e registrava o agendamento sem intervenção manual durante o fluxo.
+
+A solução também preservava o vínculo entre o evento do Google Calendar e o registro correspondente no Supabase, permitindo acompanhar cliente, serviço, profissional e status.
+
+## Arquitetura
 
 ```text
 CRM / WhatsApp
@@ -42,7 +44,7 @@ CRM / WhatsApp
 Webhook e normalização
       │
       ▼
-Controle de usuário e mensagens
+Controle de usuário e consolidação de mensagens
       │
       ▼
 Agente de IA
@@ -56,108 +58,64 @@ Agente de IA
 Google Calendar + Supabase
       │
       ▼
-Resposta pelo WhatsApp
+Resposta sequencial pelo WhatsApp
 ```
-
----
-
-# Fluxo principal
-
-O fluxo principal centralizava a entrada das mensagens e a orquestração dos diferentes serviços.
 
 ![Visão geral do fluxo principal](docs/images/fluxo-principal/01-visao-geral.png)
 
-## Entrada e normalização
+## Fluxos documentados
 
-As mensagens podiam chegar em diferentes formatos, como texto, áudio e imagem.
+<details>
+<summary><strong>Fluxo principal de atendimento</strong></summary>
 
-O fluxo identificava o tipo da mensagem e transformava o conteúdo em uma estrutura padronizada antes de continuar o processamento.
+### Entrada e normalização
+
+O fluxo recebia texto, áudio e imagem. Cada formato era convertido para uma estrutura comum antes do processamento.
 
 ![Entrada e normalização](docs/images/fluxo-principal/02-entrada-e-normalizacao.png)
 
-## Controle de usuário
+### Controle de usuário e mensagens
 
-O fluxo consultava o estado do contato e controlava situações como:
+O sistema diferenciava primeiro contato, retomada e usuário conhecido.
 
-- primeiro atendimento;
-- usuário já conhecido;
-- retomada de conversa;
-- reinicialização do contexto;
-- bloqueio temporário de mensagens duplicadas.
+Mensagens enviadas em sequência eram armazenadas temporariamente no Redis e consolidadas antes de chegar ao agente.
 
 ![Controle de usuário](docs/images/fluxo-principal/03-controle-de-usuario-e-reset.png)
 
-## Consolidação de mensagens
-
-Mensagens enviadas em sequência eram armazenadas temporariamente no Redis.
-
-Após um pequeno intervalo, o conteúdo era consolidado antes de ser enviado ao agente, evitando múltiplas respostas para mensagens fragmentadas.
-
 ![Consolidação de mensagens](docs/images/fluxo-principal/04-tratamento-e-consolidacao-de-mensagens.png)
 
-## Identificação do primeiro contato
+### Preparação e execução do agente
 
-O sistema verificava se o lead estava iniciando uma nova conversa ou continuando um atendimento anterior.
+Antes da execução, o fluxo reunia mensagem consolidada, dados do contato, resumo, status e informações de qualificação.
 
-Essa informação alterava o contexto e as instruções enviadas ao agente.
+O agente utilizava ferramentas internas para consultar horários, criar agendamentos e atualizar o contexto.
 
 ![Verificação do primeiro contato](docs/images/fluxo-principal/05-verificacao-e-primeiro-contato.png)
 
-## Preparação do contexto
-
-Antes da execução do agente, o fluxo reunia informações como:
-
-- mensagem consolidada;
-- dados do contato;
-- resumo anterior;
-- status do atendimento;
-- histórico necessário;
-- informações de qualificação.
-
 ![Preparação do contexto](docs/images/fluxo-principal/06-preparacao-de-contexto-do-agente.png)
-
-## Orquestração do agente
-
-O agente podia utilizar ferramentas internas para:
-
-- consultar horários;
-- criar agendamentos;
-- atualizar o status do atendimento;
-- atualizar o resumo da conversa;
-- recuperar dados já conhecidos do lead.
 
 ![Orquestração do agente](docs/images/fluxo-principal/07-orquestracao-e-formatacao-do-agente.png)
 
-## Envio da resposta
+### Envio da resposta
 
-A resposta final era formatada e dividida em mensagens menores.
-
-Os blocos eram enviados sequencialmente pelo WhatsApp para produzir uma conversa mais natural e evitar mensagens excessivamente longas.
+A resposta era dividida em mensagens menores e enviada sequencialmente pelo WhatsApp.
 
 ![Envio e notificação](docs/images/fluxo-principal/08-envio-e-notificacao-interna.png)
 
----
+</details>
 
-# Consulta de horários
+<details>
+<summary><strong>Consulta de horários</strong></summary>
 
-O subfluxo de consulta de horários recebia:
+### Interpretação e validação
 
-- serviço solicitado;
-- profissional;
-- mensagem do usuário;
-- configurações da agenda.
+A IA normalizava a solicitação, mas não decidia quais horários estavam livres.
 
-## Interpretação e validação
-
-A IA normalizava a solicitação do usuário, mas não decidia diretamente quais horários estavam disponíveis.
-
-Um parser JavaScript transformava expressões como:
+Um parser JavaScript convertia linguagem natural em uma estrutura previsível.
 
 ```text
-terça-feira depois das 15h
+Entrada: terça-feira depois das 15h
 ```
-
-Em uma estrutura semelhante a:
 
 ```json
 {
@@ -166,124 +124,72 @@ Em uma estrutura semelhante a:
 }
 ```
 
-Depois disso, o fluxo validava:
-
-- serviço;
-- profissional;
-- duração;
-- dias de funcionamento;
-- período solicitado;
-- limites de horário.
+O fluxo validava serviço, profissional, duração, funcionamento e restrições de horário.
 
 ![Entrada, interpretação e validação](docs/images/consulta-horarios/01-entrada-interpretacao-e-validacao.png)
 
-## Geração e filtragem
+### Geração e filtragem
 
-O fluxo gerava os horários possíveis de acordo com:
+A disponibilidade era calculada considerando:
 
 - duração do serviço;
 - intervalo entre agendamentos;
 - antecedência mínima;
-- jornada de trabalho;
+- expediente;
 - limite de dias futuros.
 
-Em seguida:
-
-1. consultava os eventos existentes no Google Calendar;
-2. removia os horários com conflito;
-3. aplicava os filtros solicitados pelo usuário;
-4. formatava as sugestões para o agente.
+Eventos existentes no Google Calendar eram removidos antes da resposta ao agente.
 
 ![Geração, consulta e filtragem](docs/images/consulta-horarios/02-geracao-consulta-e-filtragem.png)
 
-### Decisão técnica
+</details>
 
-A IA era responsável por normalizar a linguagem natural.
+<details>
+<summary><strong>Criação do agendamento</strong></summary>
 
-As regras críticas de datas, períodos, duração e conflitos eram processadas por JavaScript determinístico.
-
-Essa separação reduzia respostas imprevisíveis e evitava que o modelo inventasse horários.
-
----
-
-# Criação do agendamento
-
-O fluxo de criação recebia os dados selecionados durante o atendimento:
-
-- cliente;
-- telefone;
-- serviço;
-- profissional;
-- data e hora.
+O fluxo recebia cliente, telefone, serviço, profissional e horário selecionado.
 
 ![Validação, criação e persistência](docs/images/agendamento/01-validacao-criacao-e-persistencia.png)
 
-## Revalidação da disponibilidade
+### Revalidação
 
-Antes de criar o compromisso, o sistema consultava novamente o Google Calendar.
+A agenda era consultada novamente imediatamente antes da criação.
 
-Essa verificação evitava que um horário apresentado anteriormente fosse reservado por outra pessoa antes da confirmação do usuário.
+Caso o horário tivesse sido ocupado desde a primeira consulta, o evento não era criado.
 
-Caso houvesse conflito, o agendamento não era criado e o sistema retornava que o horário não estava mais disponível.
+### Persistência
 
-## Criação e persistência
-
-Quando o horário continuava disponível, o fluxo:
+Com o horário ainda disponível, o fluxo:
 
 1. selecionava o calendário do profissional;
-2. buscava os dados do lead;
-3. criava o evento no Google Calendar;
-4. recuperava o identificador do evento;
-5. registrava o agendamento no Supabase.
+2. criava o evento no Google Calendar;
+3. recuperava o identificador do evento;
+4. registrava o agendamento no Supabase.
 
-O registro armazenava informações como:
+O registro mantinha cliente, serviço, profissional, início, término, identificador do evento e status.
 
-- início e término;
-- cliente;
-- telefone;
-- serviço;
-- profissional;
-- identificador do evento;
-- status do agendamento.
+</details>
 
----
+<details>
+<summary><strong>Cancelamento</strong></summary>
 
-# Cancelamento de agendamentos
-
-O fluxo de cancelamento foi desenvolvido e validado, mas não foi habilitado na jornada principal.
+O fluxo foi desenvolvido e validado, mas não foi habilitado na jornada principal.
 
 ![Fluxo de cancelamento](docs/images/cancelamento/01-fluxo-cancelamento.png)
 
-O subfluxo aceitava dois cenários.
+Quando o identificador do evento estava disponível, o compromisso era excluído do Google Calendar e o status era atualizado para `cancelado` no Supabase.
 
-## Cancelamento direto
+Sem o identificador, o fluxo consultava os próximos eventos e localizava os compromissos associados ao cliente.
 
-Quando o identificador do evento estava disponível, o sistema:
+A ativação completa exigiria uma estratégia de retomada da conversa ou um fluxo independente de pós-agendamento.
 
-1. excluía o compromisso no Google Calendar;
-2. atualizava o status para `cancelado` no Supabase.
+</details>
 
-## Localização do agendamento
+## Integração com CRM
 
-Quando o identificador não estava disponível, o fluxo:
+O ChatGuru enviava os dados do lead por webhook.
 
-1. consultava os próximos eventos do profissional;
-2. localizava os compromissos relacionados ao cliente;
-3. recuperava os dados necessários para o cancelamento.
-
-## Limitação da jornada
-
-O agente principal era encerrado após a confirmação do agendamento.
-
-Para habilitar o cancelamento no atendimento principal seria necessário implementar uma estratégia de retomada da conversa ou um fluxo independente de pós-agendamento.
-
----
-
-# Integração com CRM
-
-O ChatGuru enviava os dados do lead por meio de um webhook.
-
-O fluxo normalizava campos como:
+O fluxo padronizava:
 
 - nome;
 - telefone;
@@ -291,188 +197,91 @@ O fluxo normalizava campos como:
 - responsável;
 - campanha;
 - origem;
-- identificador do chat;
-- link do atendimento.
+- identificador do atendimento;
+- link do chat.
 
-Os dados eram padronizados antes de serem persistidos ou enviados para as próximas etapas.
+Os dados eram tratados antes de serem persistidos ou encaminhados às próximas etapas.
 
----
+## Códigos selecionados
 
-# Códigos selecionados
+Os arquivos abaixo foram extraídos de nodes JavaScript do n8n, sanitizados e organizados para leitura fora do workflow.
 
-Os arquivos abaixo foram extraídos de nodes JavaScript utilizados no n8n.
+### Parser de agendamento
 
-Eles foram sanitizados e organizados para facilitar a leitura fora do canvas do workflow.
-
-## Parser de agendamento
-
-Responsável por interpretar:
-
-- hoje;
-- amanhã;
-- depois de amanhã;
-- dias da semana;
-- datas numéricas;
-- datas por extenso;
-- manhã, tarde e noite;
-- hora mínima;
-- hora máxima;
-- hora exata.
+Interpreta datas relativas, dias da semana, datas numéricas ou por extenso, períodos e restrições de horário.
 
 [Ver código do parser](docs/codigos/parser-de-agendamento.js)
 
-### Exemplo
+### Disponibilidade e conflitos
 
-```text
-Entrada:
-sexta-feira depois das 15h
-```
-
-```json
-{
-  "data": "2026-07-24",
-  "horaMin": "15:00"
-}
-```
-
----
-
-## Disponibilidade e conflitos
-
-Responsável por:
-
-- gerar os slots possíveis;
-- respeitar a duração do serviço;
-- considerar a antecedência mínima;
-- consultar eventos existentes;
-- detectar sobreposição de horários;
-- aplicar os filtros produzidos pelo parser.
+Gera slots, respeita duração e antecedência, remove sobreposições do Google Calendar e aplica os filtros produzidos pelo parser.
 
 [Ver código de disponibilidade](docs/codigos/disponibilidade-e-conflitos.js)
 
-### Regra de conflito
-
-Um horário era considerado ocupado quando:
+Regra de conflito:
 
 ```text
 início do novo horário < fim do evento existente
-e
+E
 fim do novo horário > início do evento existente
 ```
 
----
+### Normalização do webhook
 
-## Normalização do webhook
-
-Responsável por limpar e padronizar os dados recebidos do CRM.
-
-Entre os tratamentos realizados estavam:
-
-- remoção de espaços duplicados;
-- normalização de nomes;
-- padronização de telefones;
-- aplicação de valores alternativos;
-- extração de metadados do lead.
+Limpa espaços, normaliza nomes e telefones, aplica fallbacks e extrai metadados recebidos do CRM.
 
 [Ver código de normalização](docs/codigos/normalizacao-de-webhook.js)
 
----
+## Principais decisões técnicas
 
-# Principais decisões técnicas
+### IA combinada com regras determinísticas
 
-## IA combinada com regras determinísticas
+A IA era utilizada para lidar com ambiguidade linguística e conduzir a conversa.
 
-A IA era utilizada onde existia ambiguidade linguística.
+Datas, duração, funcionamento, disponibilidade, conflitos e persistência eram tratados por código.
 
-JavaScript era utilizado nas regras que precisavam ser previsíveis, como:
+### Revalidação antes da reserva
 
-- cálculo de datas;
-- geração de horários;
-- duração dos serviços;
-- conflitos;
-- limites de funcionamento;
-- persistência de dados.
+A segunda consulta ao Google Calendar reduzia o risco de dois clientes reservarem o mesmo horário entre a sugestão e a confirmação.
 
-## Revalidação antes do agendamento
+### Redis para consolidação de mensagens
 
-A disponibilidade era consultada novamente imediatamente antes da criação do evento.
+Mensagens fragmentadas eram agrupadas antes do processamento, evitando múltiplas respostas para uma mesma intenção.
 
-Isso reduzia o risco de dois clientes reservarem o mesmo horário.
+### Persistência independente do calendário
 
-## Redis para consolidação de mensagens
+O evento existia no Google Calendar e também no Supabase, permitindo histórico, status e relacionamento com o cliente.
 
-O Redis permitia aguardar mensagens enviadas em sequência e agrupá-las antes do processamento.
+### Subfluxos por responsabilidade
 
-Isso evitava que cada fragmento gerasse uma nova execução do agente.
+Consulta, criação e cancelamento foram separados do fluxo principal para reduzir acoplamento e facilitar manutenção.
 
-## Persistência independente do calendário
+## O que este case demonstra
 
-O evento era criado no Google Calendar, mas também registrado no Supabase.
-
-Essa separação permitia manter:
-
-- histórico;
-- status;
-- dados do cliente;
-- relacionamento com o identificador do evento.
-
-## Fluxos separados por responsabilidade
-
-Consulta, criação e cancelamento foram implementados como subfluxos independentes.
-
-Isso reduzia o acoplamento do fluxo principal e facilitava a manutenção.
-
----
-
-# O que este case demonstra
-
-- automação de processos com n8n;
-- integração com APIs externas;
-- tratamento de webhooks;
-- uso de Redis;
-- persistência com Supabase;
+- aplicação de uma solução em operações reais;
+- adaptação da mesma arquitetura para diferentes clientes;
+- integração com APIs, webhooks e serviços externos;
+- agentes de IA com ferramentas;
+- processamento de linguagem natural com limites determinísticos;
+- regras de negócio em JavaScript;
+- uso de Redis e Supabase;
 - integração com Google Calendar;
-- construção de agentes com ferramentas;
-- processamento de linguagem natural;
-- implementação de regras de negócio em JavaScript;
 - prevenção de conflitos de agendamento;
-- separação entre IA e lógica determinística;
-- documentação de uma solução existente.
+- modularização de workflows;
+- documentação e análise crítica de uma solução existente.
 
----
+## Limitações e possíveis evoluções
 
-# Status do projeto
+O ambiente original dependia de contas e serviços que não estão mais ativos, por isso o repositório não é apresentado como uma aplicação pronta para execução.
 
-Este repositório é um case técnico documental.
+Em uma nova implementação:
 
-O ambiente original dependia de contas, credenciais e serviços externos que não estão mais ativos. Por esse motivo, o projeto não é apresentado como uma aplicação pronta para execução.
-
-Os materiais publicados foram selecionados para demonstrar:
-
-- arquitetura;
-- fluxo de dados;
-- decisões técnicas;
-- principais regras;
-- códigos relevantes.
-
-Dados de clientes, credenciais, identificadores e informações comerciais foram removidos.
-
----
-
-# Possíveis evoluções
-
-Em uma nova implementação, as principais melhorias seriam:
-
-- mover as regras de negócio para um backend dedicado;
-- utilizar o n8n principalmente como orquestrador;
-- criar testes automatizados para datas e disponibilidade;
-- centralizar configurações de profissionais e serviços;
-- adicionar observabilidade e logs estruturados;
-- implementar retomada de conversa após o agendamento;
-- habilitar cancelamento e reagendamento na jornada principal;
-- reduzir o acoplamento entre os nodes e suas estruturas internas.
-
----
+- as regras de negócio seriam movidas para um backend dedicado;
+- o n8n permaneceria principalmente como orquestrador;
+- testes automatizados cobririam datas e disponibilidade;
+- configurações de profissionais e serviços seriam centralizadas;
+- logs e observabilidade seriam estruturados;
+- cancelamento e reagendamento teriam uma jornada independente.
 
 ## Autor
 
