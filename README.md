@@ -290,8 +290,6 @@ Consulta, criação e cancelamento foram separados do fluxo principal para reduz
 
 O ambiente original dependia de contas e serviços que não estão mais ativos, por isso o repositório não é apresentado como uma aplicação pronta para execução.
 
-A geração de horários dependia do ambiente configurado no fuso de São Paulo. Em uma nova implementação, o timezone seria tratado explicitamente por uma biblioteca dedicada para evitar dependência da configuração do servidor.
-
 Outras evoluções previstas:
 
 - mover as regras de negócio para um backend dedicado;
