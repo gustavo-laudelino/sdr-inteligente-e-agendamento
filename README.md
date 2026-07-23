@@ -29,6 +29,20 @@ A mesma arquitetura precisou ser adaptada para diferentes contextos comerciais, 
 
 Mais do que um protótipo, o projeto foi utilizado como base operacional e precisou lidar com jornadas, agendas e regras distintas.
 
+## Minha atuação
+
+Fui responsável por:
+
+- levantar e traduzir as regras de atendimento de cada operação;
+- desenhar o workflow principal e seus subfluxos;
+- implementar as integrações com WhatsApp, CRM, Redis, Supabase e Google Calendar;
+- desenvolver os códigos JavaScript de interpretação, disponibilidade e validação;
+- configurar o agente de IA e suas ferramentas;
+- testar cenários de atendimento e corrigir falhas de comportamento;
+- adaptar a solução às regras específicas de cada cliente.
+
+O desenvolvimento dos códigos contou com apoio de IA para acelerar a implementação, enquanto a definição das regras, a validação dos cenários, os testes e os ajustes de comportamento ficaram sob minha responsabilidade.
+
 ## Resultado da solução
 
 A jornada principal automatizava a entrada do lead, consolidava mensagens, mantinha o contexto do atendimento, consultava agendas reais, evitava conflitos e registrava o agendamento sem intervenção manual durante o fluxo.
@@ -260,6 +274,7 @@ Consulta, criação e cancelamento foram separados do fluxo principal para reduz
 
 - aplicação de uma solução em operações reais;
 - adaptação da mesma arquitetura para diferentes clientes;
+- levantamento e tradução de regras de negócio;
 - integração com APIs, webhooks e serviços externos;
 - agentes de IA com ferramentas;
 - processamento de linguagem natural com limites determinísticos;
@@ -268,20 +283,23 @@ Consulta, criação e cancelamento foram separados do fluxo principal para reduz
 - integração com Google Calendar;
 - prevenção de conflitos de agendamento;
 - modularização de workflows;
+- testes e ajustes baseados em cenários reais;
 - documentação e análise crítica de uma solução existente.
 
 ## Limitações e possíveis evoluções
 
 O ambiente original dependia de contas e serviços que não estão mais ativos, por isso o repositório não é apresentado como uma aplicação pronta para execução.
 
-Em uma nova implementação:
+A geração de horários dependia do ambiente configurado no fuso de São Paulo. Em uma nova implementação, o timezone seria tratado explicitamente por uma biblioteca dedicada para evitar dependência da configuração do servidor.
 
-- as regras de negócio seriam movidas para um backend dedicado;
-- o n8n permaneceria principalmente como orquestrador;
-- testes automatizados cobririam datas e disponibilidade;
-- configurações de profissionais e serviços seriam centralizadas;
-- logs e observabilidade seriam estruturados;
-- cancelamento e reagendamento teriam uma jornada independente.
+Outras evoluções previstas:
+
+- mover as regras de negócio para um backend dedicado;
+- utilizar o n8n principalmente como orquestrador;
+- criar testes automatizados para datas e disponibilidade;
+- centralizar configurações de profissionais e serviços;
+- adicionar logs e observabilidade estruturados;
+- criar uma jornada independente para cancelamento e reagendamento.
 
 ## Autor
 
