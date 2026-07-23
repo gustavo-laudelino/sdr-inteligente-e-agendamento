@@ -3,24 +3,15 @@
  *
  * Origem:
  * - Código utilizado em um node Code do n8n.
- * - Organizado para documentação e leitura fora do workflow.
+ * - Revisado para documentação e leitura fora do workflow.
  *
  * Responsabilidade:
  * Converter solicitações de datas, períodos e horários em slots estruturados.
- *
- * Exemplo de entrada:
- * "sexta-feira depois das 15h"
- *
- * Exemplo de saída:
- * [
- *   {
- *     data: "2026-07-24",
- *     horaMin: "15:00"
- *   }
- * ]
  */
 
 "use strict";
+
+const TIME_ZONE = "America/Sao_Paulo";
 
 const DIAS_SEMANA = {
   domingo: 0,
@@ -53,21 +44,19 @@ const MESES = {
 };
 
 const PERIODOS = [
-  {
-    termos: ["manha", "cedo"],
-    valor: "manha",
-  },
-  {
-    termos: ["tarde", "tardezinha"],
-    valor: "tarde",
-  },
-  {
-    termos: ["noite", "madrugada"],
-    valor: "noite",
-  },
+  { termos: ["manha", "cedo"], valor: "manha" },
+  { termos: ["tarde", "tardezinha"], valor: "tarde" },
+  { termos: ["noite", "madrugada"], valor: "noite" },
 ];
 
 const TODOS_OS_PERIODOS = ["manha", "tarde", "noite"];
+
+const FORMATADOR_DATA = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 function normalizarTexto(texto) {
   return String(texto ?? "")
@@ -75,6 +64,38 @@ function normalizarTexto(texto) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function partesFormatadas(formatador, valor) {
+  return Object.fromEntries(
+    formatador
+      .formatToParts(valor)
+      .filter(({ type }) => type !== "literal")
+      .map(({ type, value }) => [type, value]),
+  );
+}
+
+function obterDataLocalISO(instante) {
+  const partes = partesFormatadas(FORMATADOR_DATA, instante);
+  return `${partes.year}-${partes.month}-${partes.day}`;
+}
+
+function criarDataCalendario(dataISO) {
+  const correspondencia = String(dataISO).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!correspondencia) {
+    return null;
+  }
+
+  const [, ano, mes, dia] = correspondencia;
+  const data = new Date(Date.UTC(Number(ano), Number(mes) - 1, Number(dia)));
+
+  const dataValida =
+    data.getUTCFullYear() === Number(ano) &&
+    data.getUTCMonth() === Number(mes) - 1 &&
+    data.getUTCDate() === Number(dia);
+
+  return dataValida ? data : null;
 }
 
 function formatarDataISO(data) {
@@ -85,57 +106,40 @@ function formatarDataISO(data) {
   return `${ano}-${mes}-${dia}`;
 }
 
-function criarDataUTC(ano, mes, dia) {
-  const data = new Date(Date.UTC(ano, mes, dia));
+function adicionarDias(dataISO, quantidade) {
+  const data = criarDataCalendario(dataISO);
 
-  const dataValida =
-    data.getUTCFullYear() === ano &&
-    data.getUTCMonth() === mes &&
-    data.getUTCDate() === dia;
+  if (!data) {
+    throw new Error(`Data inválida: ${dataISO}`);
+  }
 
-  return dataValida ? data : null;
+  data.setUTCDate(data.getUTCDate() + quantidade);
+  return formatarDataISO(data);
+}
+
+function compararDatas(dataA, dataB) {
+  return String(dataA).localeCompare(String(dataB));
+}
+
+function diaDaSemana(dataISO) {
+  const data = criarDataCalendario(dataISO);
+  return data?.getUTCDay();
 }
 
 function formatarHora(hora, minuto = "00") {
-  const horaNumerica = Number(hora);
-  const minutoNumerico = Number(minuto || 0);
+  const horas = Number(hora);
+  const minutos = Number(minuto || 0);
 
-  const horaValida =
-    Number.isInteger(horaNumerica) &&
-    horaNumerica >= 0 &&
-    horaNumerica <= 23;
-
-  const minutoValido =
-    Number.isInteger(minutoNumerico) &&
-    minutoNumerico >= 0 &&
-    minutoNumerico <= 59;
+  const horaValida = Number.isInteger(horas) && horas >= 0 && horas <= 23;
+  const minutoValido = Number.isInteger(minutos) && minutos >= 0 && minutos <= 59;
 
   if (!horaValida || !minutoValido) {
     return null;
   }
 
-  return `${String(horaNumerica).padStart(2, "0")}:${String(
-    minutoNumerico,
-  ).padStart(2, "0")}`;
+  return `${String(horas).padStart(2, "0")}:${String(minutos).padStart(2, "0")}`;
 }
 
-/**
- * Prioridade de interpretação:
- *
- * 1. Hora mínima:
- *    "depois das 15h"
- *    "após 15h"
- *    "a partir das 15h"
- *
- * 2. Hora máxima:
- *    "antes das 17h"
- *    "até 17h"
- *
- * 3. Hora exata:
- *    "às 15h"
- *    "15:30"
- *    "15h"
- */
 function extrairRestricaoDeHorario(linha) {
   const horaMinima = linha.match(
     /(?:\b(?:apos|depois)\s+(?:as?|das?|de)?|\ba partir\s+d[ea]s?)\s*(\d{1,2})(?::|h)?(\d{0,2})?\b/,
@@ -143,12 +147,7 @@ function extrairRestricaoDeHorario(linha) {
 
   if (horaMinima) {
     const hora = formatarHora(horaMinima[1], horaMinima[2]);
-
-    if (hora) {
-      return {
-        horaMin: hora,
-      };
-    }
+    return hora ? { horaMin: hora } : undefined;
   }
 
   const horaMaxima = linha.match(
@@ -157,12 +156,7 @@ function extrairRestricaoDeHorario(linha) {
 
   if (horaMaxima) {
     const hora = formatarHora(horaMaxima[1], horaMaxima[2]);
-
-    if (hora) {
-      return {
-        horaMax: hora,
-      };
-    }
+    return hora ? { horaMax: hora } : undefined;
   }
 
   const dataComHora = linha.match(
@@ -171,31 +165,21 @@ function extrairRestricaoDeHorario(linha) {
 
   if (dataComHora?.[4]) {
     const hora = formatarHora(dataComHora[4], dataComHora[5]);
-
-    if (hora) {
-      return {
-        horaExata: hora,
-      };
-    }
+    return hora ? { horaExata: hora } : undefined;
   }
 
   const horaExata =
     linha.match(/\bas\s*(\d{1,2})(?::|h)?(\d{0,2})\b/) ||
     linha.match(/\b(\d{1,2}):(\d{2})\b/) ||
-    linha.match(/\b(\d{1,2})h\b/) ||
+    linha.match(/\b(\d{1,2})h(\d{0,2})?\b/) ||
     linha.match(/^\s*(\d{1,2})\s*$/);
 
-  if (horaExata) {
-    const hora = formatarHora(horaExata[1], horaExata[2]);
-
-    if (hora) {
-      return {
-        horaExata: hora,
-      };
-    }
+  if (!horaExata) {
+    return undefined;
   }
 
-  return undefined;
+  const hora = formatarHora(horaExata[1], horaExata[2]);
+  return hora ? { horaExata: hora } : undefined;
 }
 
 function extrairPeriodos(linha) {
@@ -203,122 +187,102 @@ function extrairPeriodos(linha) {
     return [...TODOS_OS_PERIODOS];
   }
 
-  const periodosEncontrados = PERIODOS.filter(({ termos }) =>
+  const encontrados = PERIODOS.filter(({ termos }) =>
     termos.some((termo) => linha.includes(termo)),
   ).map(({ valor }) => valor);
 
-  return periodosEncontrados.length
-    ? periodosEncontrados
-    : undefined;
+  return encontrados.length ? encontrados : undefined;
 }
 
 function indiceDoDiaDaSemana(texto) {
-  const diaNormalizado = normalizarTexto(texto);
-
-  return DIAS_SEMANA[diaNormalizado];
+  return DIAS_SEMANA[normalizarTexto(texto)];
 }
 
-function dataDoDiaNaSemanaAtual(diaSemana, hoje) {
-  const data = new Date(hoje);
+function proximaOcorrenciaDoDia(diaDesejado, hojeISO) {
+  const diaAtual = diaDaSemana(hojeISO);
+  const deslocamento = (diaDesejado - diaAtual + 7) % 7;
 
-  const deslocamento =
-    (diaSemana - data.getUTCDay() + 7) % 7;
-
-  data.setUTCDate(data.getUTCDate() + deslocamento);
-
-  const proximoDomingo = new Date(hoje);
-
-  proximoDomingo.setUTCDate(
-    hoje.getUTCDate() + (7 - hoje.getUTCDay()),
-  );
-
-  return data <= proximoDomingo
-    ? data
-    : null;
+  return adicionarDias(hojeISO, deslocamento);
 }
 
-function dataDoDiaNaProximaSemana(diaSemana, hoje) {
-  const segundaDaProximaSemana = new Date(hoje);
+function diaNestaSemana(diaDesejado, hojeISO) {
+  const diaAtual = diaDaSemana(hojeISO);
+  const deslocamento = diaDesejado - diaAtual;
 
-  const diasAteSegunda =
-    ((8 - hoje.getUTCDay()) % 7) || 7;
-
-  segundaDaProximaSemana.setUTCDate(
-    segundaDaProximaSemana.getUTCDate() +
-      diasAteSegunda,
-  );
-
-  const deslocamento =
-    (diaSemana + 6) % 7;
-
-  segundaDaProximaSemana.setUTCDate(
-    segundaDaProximaSemana.getUTCDate() +
-      deslocamento,
-  );
-
-  return segundaDaProximaSemana;
+  return deslocamento >= 0 ? adicionarDias(hojeISO, deslocamento) : null;
 }
 
-function extrairDatas(linha, hoje) {
-  /*
-   * A expressão mais específica precisa ser verificada
-   * antes de "amanhã".
-   */
+function segundaDaProximaSemana(hojeISO) {
+  const diaAtual = diaDaSemana(hojeISO);
+  const diasAteSegunda = diaAtual === 0 ? 1 : 8 - diaAtual;
+
+  return adicionarDias(hojeISO, diasAteSegunda);
+}
+
+function diaNaProximaSemana(diaDesejado, hojeISO) {
+  const segunda = segundaDaProximaSemana(hojeISO);
+  const deslocamento = (diaDesejado + 6) % 7;
+
+  return adicionarDias(segunda, deslocamento);
+}
+
+function datasDaProximaSemana(hojeISO) {
+  const segunda = segundaDaProximaSemana(hojeISO);
+  return Array.from({ length: 7 }, (_, indice) => adicionarDias(segunda, indice));
+}
+
+function datasRestantesDaSemana(hojeISO) {
+  const diaAtual = diaDaSemana(hojeISO);
+
+  // No domingo, "essa semana" é interpretada como a semana que começa no dia seguinte.
+  if (diaAtual === 0) {
+    return datasDaProximaSemana(hojeISO);
+  }
+
+  return Array.from({ length: 8 - diaAtual }, (_, indice) =>
+    adicionarDias(hojeISO, indice),
+  );
+}
+
+function criarDataExplicita(ano, mes, dia) {
+  const data = new Date(Date.UTC(ano, mes, dia));
+
+  const valida =
+    data.getUTCFullYear() === ano &&
+    data.getUTCMonth() === mes &&
+    data.getUTCDate() === dia;
+
+  return valida ? formatarDataISO(data) : null;
+}
+
+function extrairDatas(linha, hojeISO) {
   if (/\bdepois de amanha\b/.test(linha)) {
-    const data = new Date(hoje);
-
-    data.setUTCDate(
-      data.getUTCDate() + 2,
-    );
-
-    return [
-      formatarDataISO(data),
-    ];
+    return [adicionarDias(hojeISO, 2)];
   }
 
   if (/\bamanha\b/.test(linha)) {
-    const data = new Date(hoje);
-
-    data.setUTCDate(
-      data.getUTCDate() + 1,
-    );
-
-    return [
-      formatarDataISO(data),
-    ];
+    return [adicionarDias(hojeISO, 1)];
   }
 
   if (/\bhoje\b/.test(linha)) {
-    return [
-      formatarDataISO(hoje),
-    ];
+    return [hojeISO];
   }
 
-  const dataNumerica = linha.match(
-    /(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/,
-  );
+  const dataNumerica = linha.match(/(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/);
 
   if (dataNumerica) {
     const dia = Number(dataNumerica[1]);
     const mes = Number(dataNumerica[2]) - 1;
-
     let ano = dataNumerica[3]
       ? Number(dataNumerica[3])
-      : hoje.getUTCFullYear();
+      : Number(hojeISO.slice(0, 4));
 
     if (ano < 100) {
       ano += 2000;
     }
 
-    const data = criarDataUTC(
-      ano,
-      mes,
-      dia,
-    );
-
-    return data
-      ? [formatarDataISO(data)]
-      : [];
+    const data = criarDataExplicita(ano, mes, dia);
+    return data ? [data] : [];
   }
 
   const dataPorExtenso = linha.match(
@@ -326,230 +290,114 @@ function extrairDatas(linha, hoje) {
   );
 
   if (dataPorExtenso) {
-    const dia = Number(
-      dataPorExtenso[1],
-    );
-
-    const mes =
-      MESES[dataPorExtenso[2]];
-
+    const dia = Number(dataPorExtenso[1]);
+    const mes = MESES[dataPorExtenso[2]];
     const ano = dataPorExtenso[3]
       ? Number(dataPorExtenso[3])
-      : hoje.getUTCFullYear();
+      : Number(hojeISO.slice(0, 4));
 
-    const data = criarDataUTC(
-      ano,
-      mes,
-      dia,
-    );
-
-    return data
-      ? [formatarDataISO(data)]
-      : [];
+    const data = criarDataExplicita(ano, mes, dia);
+    return data ? [data] : [];
   }
 
   const diaDaProximaSemana = linha.match(
-    /\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:-feira)?\b.*semana que vem/,
+    /\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:-feira)?\b.*\bsemana que vem\b/,
   );
 
   if (diaDaProximaSemana) {
-    const indice = indiceDoDiaDaSemana(
-      diaDaProximaSemana[1],
-    );
-
-    const data = dataDoDiaNaProximaSemana(
-      indice,
-      hoje,
-    );
-
-    return [
-      formatarDataISO(data),
-    ];
+    const indice = indiceDoDiaDaSemana(diaDaProximaSemana[1]);
+    return [diaNaProximaSemana(indice, hojeISO)];
   }
 
-  if (/^\s*semana que vem\s*$/.test(linha)) {
-    return [1, 2, 3, 4, 5, 6, 0].map(
-      (diaSemana) =>
-        formatarDataISO(
-          dataDoDiaNaProximaSemana(
-            diaSemana,
-            hoje,
-          ),
-        ),
-    );
+  if (/\bsemana que vem\b/.test(linha)) {
+    return datasDaProximaSemana(hojeISO);
   }
 
   const diaDestaSemana = linha.match(
-    /\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:-feira)?\b.*essa semana/,
+    /\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:-feira)?\b.*\bessa semana\b/,
   );
 
   if (diaDestaSemana) {
-    const indice = indiceDoDiaDaSemana(
-      diaDestaSemana[1],
-    );
+    const indice = indiceDoDiaDaSemana(diaDestaSemana[1]);
+    const data = diaNestaSemana(indice, hojeISO);
 
-    const data = dataDoDiaNaSemanaAtual(
-      indice,
-      hoje,
-    );
-
-    return data
-      ? [formatarDataISO(data)]
-      : [];
+    return data ? [data] : [];
   }
 
-  if (/^\s*essa semana\s*$/.test(linha)) {
-    const datas = [];
-
-    for (
-      let diaSemana = hoje.getUTCDay();
-      diaSemana <= 6;
-      diaSemana += 1
-    ) {
-      const data = dataDoDiaNaSemanaAtual(
-        diaSemana,
-        hoje,
-      );
-
-      if (data) {
-        datas.push(
-          formatarDataISO(data),
-        );
-      }
-    }
-
-    return datas;
+  if (/\bessa semana\b/.test(linha)) {
+    return datasRestantesDaSemana(hojeISO);
   }
 
-  const diaDaSemana = linha.match(
+  const diaInformado = linha.match(
     /\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:-feira)?\b/,
   );
 
-  if (diaDaSemana) {
-    const indice = indiceDoDiaDaSemana(
-      diaDaSemana[1],
-    );
-
-    const data = dataDoDiaNaSemanaAtual(
-      indice,
-      hoje,
-    );
-
-    return data
-      ? [formatarDataISO(data)]
-      : [];
+  if (diaInformado) {
+    const indice = indiceDoDiaDaSemana(diaInformado[1]);
+    return [proximaOcorrenciaDoDia(indice, hojeISO)];
   }
 
   return [];
 }
 
-function mesclarSlot(
-  destino,
-  periodos,
-  horario,
-) {
+function mesclarSlot(destino, periodos, horario) {
   if (periodos) {
     destino.periodos ??= [];
 
     for (const periodo of periodos) {
-      const periodoJaExiste =
-        destino.periodos.includes(periodo);
-
-      if (!periodoJaExiste) {
+      if (!destino.periodos.includes(periodo)) {
         destino.periodos.push(periodo);
       }
     }
   }
 
   if (horario) {
-    Object.assign(
-      destino,
-      horario,
-    );
+    Object.assign(destino, horario);
   }
 }
 
-function parseAgendamento(
-  entrada,
-  dataReferencia = new Date(),
-) {
-  const hoje = new Date(
-    dataReferencia,
-  );
+function parseAgendamento(entrada, dataReferencia = new Date()) {
+  const hojeISO = obterDataLocalISO(new Date(dataReferencia));
 
-  hoje.setUTCHours(
-    0,
-    0,
-    0,
-    0,
-  );
-
-  const linhas = String(
-    entrada ?? "",
-  )
+  const linhas = String(entrada ?? "")
     .split("\n")
     .map(normalizarTexto)
     .filter(Boolean);
 
-  const slotsPorData =
-    new Map();
+  const slotsPorData = new Map();
 
   for (const linha of linhas) {
-    const datas = extrairDatas(
-      linha,
-      hoje,
-    );
+    let datas = extrairDatas(linha, hojeISO);
+    const periodos = extrairPeriodos(linha);
+    const horario = extrairRestricaoDeHorario(linha);
 
-    const periodos =
-      extrairPeriodos(linha);
-
-    const horario =
-      extrairRestricaoDeHorario(linha);
+    // Uma preferência isolada, como "de manhã" ou "depois das 15h",
+    // é aplicada aos dias restantes da semana.
+    if (datas.length === 0 && (periodos || horario)) {
+      datas = datasRestantesDaSemana(hojeISO);
+    }
 
     for (const data of datas) {
-      const slot =
-        slotsPorData.get(data) ?? {
-          data,
-        };
-
-      mesclarSlot(
-        slot,
-        periodos,
-        horario,
-      );
-
-      slotsPorData.set(
-        data,
-        slot,
-      );
+      const slot = slotsPorData.get(data) ?? { data };
+      mesclarSlot(slot, periodos, horario);
+      slotsPorData.set(data, slot);
     }
   }
 
-  return [
-    ...slotsPorData.values(),
-  ].sort((primeiro, segundo) =>
-    primeiro.data.localeCompare(
-      segundo.data,
-    ),
-  );
+  return [...slotsPorData.values()].sort((a, b) => compararDatas(a.data, b.data));
 }
 
 /*
- * Exemplo de adaptação para um node Code do n8n:
+ * Adaptação para um node Code do n8n:
  *
- * const entrada =
- *   $json.message?.content || "";
+ * const entrada = $json.message?.content || "";
+ * const slots = parseAgendamento(entrada);
  *
- * const slots =
- *   parseAgendamento(entrada);
- *
- * return [
- *   {
- *     json: {
- *       slots,
- *       excluirDias: [],
- *       excluirPeriodos: []
- *     }
+ * return [{
+ *   json: {
+ *     slots,
+ *     excluirDias: [],
+ *     excluirPeriodos: []
  *   }
- * ];
+ * }];
  */
