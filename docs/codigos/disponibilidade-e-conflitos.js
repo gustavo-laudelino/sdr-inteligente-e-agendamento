@@ -3,7 +3,7 @@
  *
  * Origem:
  * - Código extraído de nodes Code do n8n.
- * - Organizado para documentação e leitura fora do workflow.
+ * - Revisado para não depender do timezone configurado no servidor.
  *
  * Responsabilidades:
  * - Gerar horários possíveis conforme a configuração da agenda.
@@ -16,76 +16,214 @@
 
 const TIME_ZONE = "America/Sao_Paulo";
 
-const DIAS_SEMANA = {
-  domingo: "domingo",
-  "segunda-feira": "segunda",
-  segunda: "segunda",
-  "terça-feira": "terca",
-  terça: "terca",
-  "terca-feira": "terca",
-  terca: "terca",
-  "quarta-feira": "quarta",
-  quarta: "quarta",
-  "quinta-feira": "quinta",
-  quinta: "quinta",
-  "sexta-feira": "sexta",
-  sexta: "sexta",
-  sábado: "sabado",
-  sabado: "sabado",
+const CHAVES_DIA = [
+  "domingo",
+  "segunda",
+  "terca",
+  "quarta",
+  "quinta",
+  "sexta",
+  "sabado",
+];
+
+const ALIASES_DIA = {
+  domingo: ["domingo"],
+  segunda: ["segunda", "segunda-feira"],
+  terca: ["terca", "terça", "terca-feira", "terça-feira"],
+  quarta: ["quarta", "quarta-feira"],
+  quinta: ["quinta", "quinta-feira"],
+  sexta: ["sexta", "sexta-feira"],
+  sabado: ["sabado", "sábado"],
 };
 
+const FORMATADOR_DATA = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const FORMATADOR_HORA = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+const FORMATADOR_PARTES = new Intl.DateTimeFormat("en-US", {
+  timeZone: TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+function partesFormatadas(formatador, valor) {
+  return Object.fromEntries(
+    formatador
+      .formatToParts(valor)
+      .filter(({ type }) => type !== "literal")
+      .map(({ type, value }) => [type, value]),
+  );
+}
+
+function formatarDataLocal(instante) {
+  const partes = partesFormatadas(FORMATADOR_DATA, instante);
+  return `${partes.year}-${partes.month}-${partes.day}`;
+}
+
+function formatarHoraLocal(instante) {
+  const partes = partesFormatadas(FORMATADOR_HORA, instante);
+  return `${partes.hour}:${partes.minute}`;
+}
+
+function validarDataISO(dataISO) {
+  const correspondencia = String(dataISO).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!correspondencia) {
+    return false;
+  }
+
+  const [, ano, mes, dia] = correspondencia;
+  const data = new Date(Date.UTC(Number(ano), Number(mes) - 1, Number(dia)));
+
+  return (
+    data.getUTCFullYear() === Number(ano) &&
+    data.getUTCMonth() === Number(mes) - 1 &&
+    data.getUTCDate() === Number(dia)
+  );
+}
+
+function adicionarDias(dataISO, quantidade) {
+  if (!validarDataISO(dataISO)) {
+    throw new Error(`Data inválida: ${dataISO}`);
+  }
+
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  const data = new Date(Date.UTC(ano, mes - 1, dia + quantidade));
+
+  return [
+    data.getUTCFullYear(),
+    String(data.getUTCMonth() + 1).padStart(2, "0"),
+    String(data.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function diaDaSemana(dataISO) {
+  if (!validarDataISO(dataISO)) {
+    throw new Error(`Data inválida: ${dataISO}`);
+  }
+
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  return new Date(Date.UTC(ano, mes - 1, dia)).getUTCDay();
+}
+
+function normalizarHora(hora) {
+  const correspondencia = String(hora ?? "").match(/^(\d{1,2}):(\d{2})$/);
+
+  if (!correspondencia) {
+    return null;
+  }
+
+  const horas = Number(correspondencia[1]);
+  const minutos = Number(correspondencia[2]);
+
+  if (horas < 0 || horas > 23 || minutos < 0 || minutos > 59) {
+    return null;
+  }
+
+  return `${String(horas).padStart(2, "0")}:${String(minutos).padStart(2, "0")}`;
+}
+
 function horaParaMinutos(hora) {
-  if (!hora) {
+  const horaNormalizada = normalizarHora(hora);
+
+  if (!horaNormalizada) {
     return null;
   }
 
-  const [horas, minutos = 0] = String(hora)
-    .split(":")
-    .map(Number);
-
-  if (
-    !Number.isInteger(horas) ||
-    !Number.isInteger(minutos)
-  ) {
-    return null;
-  }
-
+  const [horas, minutos] = horaNormalizada.split(":").map(Number);
   return horas * 60 + minutos;
 }
 
-function formatarDataLocal(data) {
-  return data
-    .toLocaleDateString("pt-BR", {
-      timeZone: TIME_ZONE,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    })
-    .split("/")
-    .reverse()
-    .join("-");
+function obterOffsetDaZonaEmMs(instante) {
+  const partes = partesFormatadas(FORMATADOR_PARTES, instante);
+
+  const representacaoUTC = Date.UTC(
+    Number(partes.year),
+    Number(partes.month) - 1,
+    Number(partes.day),
+    Number(partes.hour),
+    Number(partes.minute),
+    Number(partes.second),
+  );
+
+  const instanteSemMilissegundos =
+    Math.floor(instante.getTime() / 1000) * 1000;
+
+  return representacaoUTC - instanteSemMilissegundos;
 }
 
-function formatarHoraLocal(data) {
-  return data
-    .toLocaleTimeString("pt-BR", {
-      timeZone: TIME_ZONE,
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-    .slice(0, 5);
+/**
+ * Converte uma data e hora locais de São Paulo para um instante UTC,
+ * sem depender do timezone do processo Node.js.
+ */
+function criarInstanteNaZona(dataISO, hora) {
+  if (!validarDataISO(dataISO)) {
+    throw new Error(`Data inválida: ${dataISO}`);
+  }
+
+  const horaNormalizada = normalizarHora(hora);
+
+  if (!horaNormalizada) {
+    throw new Error(`Hora inválida: ${hora}`);
+  }
+
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  const [horas, minutos] = horaNormalizada.split(":").map(Number);
+  const baseUTC = Date.UTC(ano, mes - 1, dia, horas, minutos);
+
+  let timestamp = baseUTC;
+
+  for (let tentativa = 0; tentativa < 4; tentativa += 1) {
+    const offset = obterOffsetDaZonaEmMs(new Date(timestamp));
+    const ajustado = baseUTC - offset;
+
+    if (Math.abs(ajustado - timestamp) < 1000) {
+      timestamp = ajustado;
+      break;
+    }
+
+    timestamp = ajustado;
+  }
+
+  const resultado = new Date(timestamp);
+
+  if (
+    formatarDataLocal(resultado) !== dataISO ||
+    formatarHoraLocal(resultado) !== horaNormalizada
+  ) {
+    throw new Error(
+      `A data e hora ${dataISO} ${horaNormalizada} não existem no timezone ${TIME_ZONE}.`,
+    );
+  }
+
+  return resultado;
 }
 
-function obterDiaDaSemana(data) {
-  const nomeDia = data
-    .toLocaleDateString("pt-BR", {
-      timeZone: TIME_ZONE,
-      weekday: "long",
-    })
-    .toLowerCase();
+function obterHorarioFuncionamento(config, chaveDia) {
+  const configuracao = config.diasFuncionamento ?? {};
 
-  return DIAS_SEMANA[nomeDia];
+  for (const alias of ALIASES_DIA[chaveDia] ?? [chaveDia]) {
+    if (configuracao[alias]) {
+      return configuracao[alias];
+    }
+  }
+
+  return null;
 }
 
 function obterPeriodo(hora) {
@@ -106,451 +244,265 @@ function obterPeriodo(hora) {
   return "noite";
 }
 
-function encontrarProfissional(
-  profissionais,
-  nomeProfissional,
-) {
+function encontrarProfissional(profissionais, nomeProfissional) {
+  const nomeBuscado = String(nomeProfissional ?? "").toLowerCase().trim();
+
   return profissionais.find(
-    (profissional) =>
-      String(profissional.nome)
-        .toLowerCase()
-        .trim() ===
-      String(nomeProfissional)
-        .toLowerCase()
-        .trim(),
+    ({ nome }) => String(nome ?? "").toLowerCase().trim() === nomeBuscado,
   );
 }
 
-function validarConfiguracao(
-  config,
-  servico,
-  profissional,
-) {
-  const configuracaoServico =
-    config.servicos?.[servico];
+function validarConfiguracao(config, servico, profissional) {
+  const configuracaoServico = config.servicos?.[servico];
 
-  if (
-    !configuracaoServico ||
-    !configuracaoServico.duracaoMinutos
-  ) {
-    throw new Error(
-      `Serviço '${servico}' não possui duração configurada.`,
-    );
+  if (!configuracaoServico?.duracaoMinutos) {
+    throw new Error(`Serviço '${servico}' não possui duração configurada.`);
   }
 
-  const profissionalEncontrado =
-    encontrarProfissional(
-      config.profissionais ?? [],
-      profissional,
-    );
+  const profissionalEncontrado = encontrarProfissional(
+    config.profissionais ?? [],
+    profissional,
+  );
 
   if (!profissionalEncontrado) {
-    throw new Error(
-      `Profissional '${profissional}' não encontrado.`,
-    );
+    throw new Error(`Profissional '${profissional}' não encontrado.`);
   }
 
-  return {
-    configuracaoServico,
-    profissionalEncontrado,
-  };
+  return { configuracaoServico, profissionalEncontrado };
 }
 
-/**
- * Gera os slots possíveis antes de consultar
- * os eventos existentes no Google Calendar.
- */
 function gerarHorariosPossiveis({
   config,
   servico,
   profissional,
   dataReferencia = new Date(),
-  antecedenciaMinutos = 20,
+  antecedenciaMinutos,
 }) {
-  const {
-    configuracaoServico,
-    profissionalEncontrado,
-  } = validarConfiguracao(
-    config,
-    servico,
-    profissional,
-  );
+  const { configuracaoServico, profissionalEncontrado } =
+    validarConfiguracao(config, servico, profissional);
 
-  const duracaoMinutos = Number(
-    configuracaoServico.duracaoMinutos,
-  );
-
-  let intervaloMinutos = Number(
+  const duracaoMinutos = Number(configuracaoServico.duracaoMinutos);
+  const intervaloConfigurado = Number(
     config.intervaloMinimoEntreAgendamentosMin,
   );
+  const intervaloMinutos =
+    Number.isFinite(intervaloConfigurado) && intervaloConfigurado > 0
+      ? intervaloConfigurado
+      : 10;
 
-  if (
-    !Number.isFinite(intervaloMinutos) ||
-    intervaloMinutos <= 0
-  ) {
-    intervaloMinutos = 10;
-  }
+  const limiteDiasFuturos = Math.max(
+    0,
+    Number(config.maxDiasAgendamento) || 7,
+  );
 
-  const maxDiasAgendamento =
-    Number(config.maxDiasAgendamento) || 7;
+  const antecedenciaConfigurada = Number(
+    antecedenciaMinutos ?? config.antecedenciaMinimaMin ?? 20,
+  );
+  const antecedencia =
+    Number.isFinite(antecedenciaConfigurada) && antecedenciaConfigurada >= 0
+      ? antecedenciaConfigurada
+      : 20;
 
   const agora = new Date(dataReferencia);
 
-  const limiteAntecedencia = new Date(
-    agora.getTime() +
-      antecedenciaMinutos * 60_000,
-  );
+  if (Number.isNaN(agora.getTime())) {
+    throw new Error("A data de referência é inválida.");
+  }
 
+  const hojeISO = formatarDataLocal(agora);
+  const limiteAntecedencia = new Date(
+    agora.getTime() + antecedencia * 60_000,
+  );
   const horarios = [];
 
   for (
     let deslocamento = 0;
-    deslocamento <= maxDiasAgendamento;
+    deslocamento <= limiteDiasFuturos;
     deslocamento += 1
   ) {
-    const dataAtual = new Date(agora);
+    const dataISO = adicionarDias(hojeISO, deslocamento);
+    const chaveDia = CHAVES_DIA[diaDaSemana(dataISO)];
+    const funcionamento = obterHorarioFuncionamento(config, chaveDia);
 
-    dataAtual.setDate(
-      dataAtual.getDate() + deslocamento,
-    );
-
-    const diaSemana =
-      obterDiaDaSemana(dataAtual);
-
-    const horarioFuncionamento =
-      config.diasFuncionamento?.[diaSemana];
-
-    if (
-      !horarioFuncionamento?.inicio ||
-      !horarioFuncionamento?.fim
-    ) {
+    if (!funcionamento?.inicio || !funcionamento?.fim) {
       continue;
     }
 
-    const [
-      horaInicio,
-      minutoInicio,
-    ] = horarioFuncionamento.inicio
-      .split(":")
-      .map(Number);
-
-    const [
-      horaFim,
-      minutoFim,
-    ] = horarioFuncionamento.fim
-      .split(":")
-      .map(Number);
-
-    const inicioExpediente =
-      new Date(dataAtual);
-
-    inicioExpediente.setHours(
-      horaInicio,
-      minutoInicio,
-      0,
-      0,
+    const inicioExpediente = criarInstanteNaZona(
+      dataISO,
+      funcionamento.inicio,
     );
+    const fimExpediente = criarInstanteNaZona(dataISO, funcionamento.fim);
 
-    const fimExpediente =
-      new Date(dataAtual);
+    if (fimExpediente <= inicioExpediente) {
+      throw new Error(
+        `O expediente de ${chaveDia} termina antes de começar.`,
+      );
+    }
 
-    fimExpediente.setHours(
-      horaFim,
-      minutoFim,
-      0,
-      0,
-    );
+    let inicioSlot = new Date(inicioExpediente);
 
-    let inicioSlot =
-      new Date(inicioExpediente);
+    if (dataISO === hojeISO && inicioSlot < limiteAntecedencia) {
+      const passo = intervaloMinutos * 60_000;
+      const tempoDesdeInicio =
+        limiteAntecedencia.getTime() - inicioExpediente.getTime();
+      const quantidadePassos = Math.max(0, Math.ceil(tempoDesdeInicio / passo));
 
-    const hoje = deslocamento === 0;
-
-    if (
-      hoje &&
-      inicioSlot < limiteAntecedencia
-    ) {
-      const passoEmMilissegundos =
-        intervaloMinutos * 60_000;
-
-      const horarioAlinhado = Math.ceil(
-        limiteAntecedencia.getTime() /
-          passoEmMilissegundos,
-      ) * passoEmMilissegundos;
-
-      inicioSlot =
-        new Date(horarioAlinhado);
+      inicioSlot = new Date(
+        inicioExpediente.getTime() + quantidadePassos * passo,
+      );
     }
 
     while (
-      inicioSlot.getTime() +
-        duracaoMinutos * 60_000 <=
+      inicioSlot.getTime() + duracaoMinutos * 60_000 <=
       fimExpediente.getTime()
     ) {
       const fimSlot = new Date(
-        inicioSlot.getTime() +
-          duracaoMinutos * 60_000,
+        inicioSlot.getTime() + duracaoMinutos * 60_000,
       );
 
-      const respeitaAntecedencia =
-        !hoje ||
-        inicioSlot >= limiteAntecedencia;
-
-      if (respeitaAntecedencia) {
+      if (inicioSlot >= limiteAntecedencia) {
         horarios.push({
           servico,
           profissional,
-
-          data:
-            formatarDataLocal(inicioSlot),
-
-          horaInicio:
-            formatarHoraLocal(inicioSlot),
-
-          horaFim:
-            formatarHoraLocal(fimSlot),
-
-          inicioISO:
-            inicioSlot.toISOString(),
-
-          fimISO:
-            fimSlot.toISOString(),
-
-          diaSemana,
+          data: formatarDataLocal(inicioSlot),
+          horaInicio: formatarHoraLocal(inicioSlot),
+          horaFim: formatarHoraLocal(fimSlot),
+          inicioISO: inicioSlot.toISOString(),
+          fimISO: fimSlot.toISOString(),
+          timeZone: TIME_ZONE,
+          diaSemana: chaveDia,
         });
       }
 
       inicioSlot = new Date(
-        inicioSlot.getTime() +
-          intervaloMinutos * 60_000,
+        inicioSlot.getTime() + intervaloMinutos * 60_000,
       );
     }
   }
 
   return {
     horarios,
-    calendarId:
-      profissionalEncontrado.calendarId,
+    calendarId: profissionalEncontrado.calendarId,
+    timeZone: TIME_ZONE,
   };
 }
 
-/**
- * Existe conflito quando:
- *
- * inicioSlot < fimEvento
- * e
- * fimSlot > inicioEvento
- */
-function temConflito(
-  horario,
-  eventos,
-) {
-  const inicioSlot = Date.parse(
-    horario.inicioISO,
-  );
+function obterIntervaloDoEvento(evento) {
+  if (evento.start?.dateTime && evento.end?.dateTime) {
+    const inicio = Date.parse(evento.start.dateTime);
+    const fim = Date.parse(evento.end.dateTime);
 
-  const fimSlot = Date.parse(
-    horario.fimISO,
-  );
+    return Number.isFinite(inicio) && Number.isFinite(fim)
+      ? { inicio, fim }
+      : null;
+  }
+
+  if (evento.start?.date && evento.end?.date) {
+    try {
+      return {
+        inicio: criarInstanteNaZona(evento.start.date, "00:00").getTime(),
+        fim: criarInstanteNaZona(evento.end.date, "00:00").getTime(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function temConflito(horario, eventos) {
+  const inicioSlot = Date.parse(horario.inicioISO);
+  const fimSlot = Date.parse(horario.fimISO);
+
+  if (!Number.isFinite(inicioSlot) || !Number.isFinite(fimSlot)) {
+    return true;
+  }
 
   return eventos.some((evento) => {
-    const inicioEvento =
-      evento.start?.dateTime;
-
-    const fimEvento =
-      evento.end?.dateTime;
-
-    if (
-      !inicioEvento ||
-      !fimEvento
-    ) {
-      return false;
-    }
-
-    const inicioEventoMs =
-      Date.parse(inicioEvento);
-
-    const fimEventoMs =
-      Date.parse(fimEvento);
+    const intervalo = obterIntervaloDoEvento(evento);
 
     return (
-      inicioSlot < fimEventoMs &&
-      fimSlot > inicioEventoMs
+      intervalo &&
+      inicioSlot < intervalo.fim &&
+      fimSlot > intervalo.inicio
     );
   });
 }
 
-function removerConflitos(
-  horarios,
-  eventos,
-) {
-  return horarios.filter(
-    (horario) =>
-      !temConflito(
-        horario,
-        eventos,
-      ),
-  );
+function removerConflitos(horarios, eventos) {
+  return horarios.filter((horario) => !temConflito(horario, eventos));
 }
 
-function atendePeriodo(
-  horario,
-  periodos,
-) {
-  if (
-    !periodos ||
-    periodos.length === 0
-  ) {
+function atendePeriodo(horario, periodos) {
+  if (!Array.isArray(periodos) || periodos.length === 0) {
     return true;
   }
 
-  const periodoHorario =
-    obterPeriodo(horario.horaInicio);
-
-  return periodos.includes(
-    periodoHorario,
-  );
+  return periodos.includes(obterPeriodo(horario.horaInicio));
 }
 
-function atendeHoraMinima(
-  horario,
-  horaMinima,
-) {
-  if (!horaMinima) {
+function atendeLimiteDeHora(horario, limite, comparador) {
+  if (!limite) {
     return true;
   }
+
+  const minutosHorario = horaParaMinutos(horario.horaInicio);
+  const minutosLimite = horaParaMinutos(limite);
 
   return (
-    horaParaMinutos(
-      horario.horaInicio,
-    ) >=
-    horaParaMinutos(horaMinima)
+    minutosHorario !== null &&
+    minutosLimite !== null &&
+    comparador(minutosHorario, minutosLimite)
   );
 }
 
-function atendeHoraMaxima(
-  horario,
-  horaMaxima,
-) {
-  if (!horaMaxima) {
-    return true;
-  }
-
-  return (
-    horaParaMinutos(
-      horario.horaInicio,
-    ) <=
-    horaParaMinutos(horaMaxima)
-  );
-}
-
-function atendeHoraExata(
-  horario,
-  horaExata,
-  toleranciaMinutos = 5,
-) {
+function atendeHoraExata(horario, horaExata, toleranciaMinutos = 0) {
   if (!horaExata) {
     return true;
   }
 
-  const minutosHorario =
-    horaParaMinutos(
-      horario.horaInicio,
-    );
+  const minutosHorario = horaParaMinutos(horario.horaInicio);
+  const minutosSolicitados = horaParaMinutos(horaExata);
 
-  const minutosSolicitados =
-    horaParaMinutos(horaExata);
-
-  if (
-    minutosHorario === null ||
-    minutosSolicitados === null
-  ) {
+  if (minutosHorario === null || minutosSolicitados === null) {
     return false;
   }
 
   return (
-    Math.abs(
-      minutosHorario -
-        minutosSolicitados,
-    ) <= toleranciaMinutos
+    Math.abs(minutosHorario - minutosSolicitados) <= toleranciaMinutos
   );
 }
 
-function atendeSolicitacao(
-  horario,
-  slotSolicitado,
-) {
-  if (
-    horario.data !==
-    slotSolicitado.data
-  ) {
+function atendeSolicitacao(horario, slotSolicitado) {
+  if (horario.data !== slotSolicitado.data) {
     return false;
   }
 
-  const periodoValido =
-    atendePeriodo(
-      horario,
-      slotSolicitado.periodos,
-    );
-
-  const horaMinimaValida =
-    atendeHoraMinima(
+  return (
+    atendePeriodo(horario, slotSolicitado.periodos) &&
+    atendeLimiteDeHora(
       horario,
       slotSolicitado.horaMin,
-    );
-
-  const horaMaximaValida =
-    atendeHoraMaxima(
+      (horarioMin, limiteMin) => horarioMin >= limiteMin,
+    ) &&
+    atendeLimiteDeHora(
       horario,
       slotSolicitado.horaMax,
-    );
-
-  const horaExataValida =
-    atendeHoraExata(
-      horario,
-      slotSolicitado.horaExata,
-    );
-
-  return (
-    periodoValido &&
-    horaMinimaValida &&
-    horaMaximaValida &&
-    horaExataValida
+      (horarioMin, limiteMin) => horarioMin <= limiteMin,
+    ) &&
+    atendeHoraExata(horario, slotSolicitado.horaExata)
   );
 }
 
-/**
- * Aplica aos horários disponíveis os slots
- * gerados pelo parser de agendamento.
- *
- * Exemplo de slot:
- *
- * {
- *   data: "2026-07-24",
- *   periodos: ["tarde"],
- *   horaMin: "15:00"
- * }
- */
-function filtrarPorSolicitacao(
-  horarios,
-  slotsSolicitados,
-) {
-  if (
-    !Array.isArray(slotsSolicitados) ||
-    slotsSolicitados.length === 0
-  ) {
+function filtrarPorSolicitacao(horarios, slotsSolicitados) {
+  if (!Array.isArray(slotsSolicitados) || slotsSolicitados.length === 0) {
     return horarios;
   }
 
-  return horarios.filter(
-    (horario) =>
-      slotsSolicitados.some(
-        (slotSolicitado) =>
-          atendeSolicitacao(
-            horario,
-            slotSolicitado,
-          ),
-      ),
+  return horarios.filter((horario) =>
+    slotsSolicitados.some((slot) => atendeSolicitacao(horario, slot)),
   );
 }
 
@@ -559,75 +511,51 @@ function processarDisponibilidade({
   servico,
   profissional,
   slotsSolicitados,
-  eventosGoogleCalendar,
+  eventosGoogleCalendar = [],
   dataReferencia = new Date(),
 }) {
-  const {
-    horarios,
-    calendarId,
-  } = gerarHorariosPossiveis({
+  const { horarios, calendarId, timeZone } = gerarHorariosPossiveis({
     config,
     servico,
     profissional,
     dataReferencia,
   });
 
-  const horariosSemConflito =
-    removerConflitos(
-      horarios,
-      eventosGoogleCalendar ?? [],
-    );
-
-  const horariosDisponiveis =
-    filtrarPorSolicitacao(
-      horariosSemConflito,
-      slotsSolicitados,
-    );
-
-  const possuiDisponibilidade =
-    horariosDisponiveis.length > 0;
+  const horariosSemConflito = removerConflitos(
+    horarios,
+    eventosGoogleCalendar,
+  );
+  const horariosDisponiveis = filtrarPorSolicitacao(
+    horariosSemConflito,
+    slotsSolicitados,
+  );
+  const possuiDisponibilidade = horariosDisponiveis.length > 0;
 
   return {
-    status: possuiDisponibilidade
-      ? "ok"
-      : "sem_horario",
-
+    status: possuiDisponibilidade ? "ok" : "sem_horario",
     calendarId,
-
+    timeZone,
     horariosDisponiveis,
-
-    mensagemUsuario:
-      possuiDisponibilidade
-        ? `Encontrei ${horariosDisponiveis.length} horário(s) disponível(is).`
-        : "Não encontrei horários disponíveis no período solicitado.",
+    mensagemUsuario: possuiDisponibilidade
+      ? `Encontrei ${horariosDisponiveis.length} horário(s) disponível(is).`
+      : "Não encontrei horários disponíveis no período solicitado.",
   };
 }
 
 /*
- * Exemplo de adaptação para nodes Code do n8n:
+ * Adaptação para nodes Code do n8n:
  *
- * const config =
- *   $node["configAgenda"].json;
+ * const config = $node["configAgenda"].json;
+ * const eventos = $items("Get Many").map((item) => item.json);
+ * const slotsSolicitados = $node["Parser"].json.slots;
  *
- * const eventos =
- *   $items("Get Many")
- *     .map((item) => item.json);
+ * const resultado = processarDisponibilidade({
+ *   config,
+ *   servico: $json.servico,
+ *   profissional: $json.profissional,
+ *   slotsSolicitados,
+ *   eventosGoogleCalendar: eventos,
+ * });
  *
- * const slotsSolicitados =
- *   $node["Parser"].json.slots;
- *
- * const resultado =
- *   processarDisponibilidade({
- *     config,
- *     servico: $json.servico,
- *     profissional: $json.profissional,
- *     slotsSolicitados,
- *     eventosGoogleCalendar: eventos,
- *   });
- *
- * return [
- *   {
- *     json: resultado,
- *   },
- * ];
+ * return [{ json: resultado }];
  */
